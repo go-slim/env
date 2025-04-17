@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"zestack.dev/cast"
+	"go-slim.dev/cast"
 )
 
 var _ Signer = &inner{}
