@@ -63,6 +63,18 @@ func (i *inner) Int(key string, fallback ...int) int {
 	return 0
 }
 
+func (i *inner) Float(key string, fallback ...float64) float64 {
+	if val, exists := i.Lookup(key); exists {
+		if n, err := strconv.ParseFloat(val, 64); err == nil {
+			return n
+		}
+	}
+	for _, value := range fallback {
+		return value
+	}
+	return 0
+}
+
 func (i *inner) Duration(key string, fallback ...time.Duration) time.Duration {
 	if val, ok := i.Lookup(key); ok {
 		n, err := strconv.Atoi(val)

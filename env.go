@@ -199,6 +199,10 @@ func Int(name string, value ...int) int {
 	return env.Int(name, value...)
 }
 
+func Float(name string, value ...float64) float64 {
+	return env.Float(name, value...)
+}
+
 func Duration(name string, value ...time.Duration) time.Duration {
 	return env.Duration(name, value...)
 }
