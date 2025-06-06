@@ -169,7 +169,23 @@ func Path(path ...string) string {
 	}
 }
 
+func Is(env ...string) bool {
+	if len(env) == 0 {
+		return false
+	}
+	if val, exists := Lookup("APP_ENV"); exists {
+		for _, s := range env {
+			if val == s {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // IsEnv 判断应用环境是否与给出的一致
+//
+// Deprecated: 使用 env.Is 方法代理
 func IsEnv(env string) bool {
 	return String("APP_ENV") == env
 }
