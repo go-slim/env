@@ -72,6 +72,11 @@ var (
 	root string
 )
 
+// Default 返回默认操作对象
+func Default() Environ {
+	return env
+}
+
 // Init 加载运行目录下的 .env 文件
 func Init(root ...string) error {
 	var dir string
