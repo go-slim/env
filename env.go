@@ -128,6 +128,9 @@ func InitWithDir(dir string) (err error) {
 	// 加载与运行环境相关的环境变量
 	appEnv := String("APP_ENV", "prod")
 	if len(appEnv) > 0 {
+		env.Save(map[string]string{
+			"APP_ENV": appEnv,
+		})
 		// 加载 .env.{APP_ENV} 和 .env.{APP_ENV}.local 文件
 		err = loadEnv(dir, "."+strings.ToLower(appEnv))
 		if err != nil {
@@ -193,6 +196,18 @@ func Is(env ...string) bool {
 // Deprecated: 使用 env.Is 方法代理
 func IsEnv(env string) bool {
 	return String("APP_ENV") == env
+}
+
+// Inject 尝试将数据注入到到 Environ 里面
+func Inject(env Environ, data map[string]string) bool {
+	if env == nil || len(data) == 0 {
+		return false
+	}
+	if s, ok := env.(interface{ Save(data map[string]string) }); ok {
+		s.Save(data)
+		return true
+	}
+	return false
 }
 
 // Lookup 查看配置
