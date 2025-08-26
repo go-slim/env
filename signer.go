@@ -68,38 +68,47 @@ func (s *signer) exists2(category, key string) bool {
 }
 
 func (s *signer) iter() func() (key string, value string, ok bool) {
-	next := s.environ.inner.iter()
-	prefix := s.prefix
-	if prefix != "" {
-		prefix += "_"
-	}
-	if s.category != "" {
-		prefix += s.category + "_"
-	}
-	var keys, values []string
-	var index int
-	return func() (key string, value string, ok bool) {
-		if next == nil {
-			if index >= len(keys) {
-				return "", "", false
-			}
-			defer func() {
-				index++
-			}()
-			return keys[index], values[index], true
-		}
-		for {
-			k, v, b := next()
-			if !b {
-				return "", "", false
-			}
-			if strings.HasPrefix(k, prefix) {
-				return strings.TrimPrefix(k, prefix), v, true
-			}
-			if s.prefix != "" && strings.HasPrefix(k, s.prefix) {
-				keys = append(keys, strings.TrimPrefix(k, s.prefix))
-				values = append(values, value)
-			}
-		}
-	}
+    next := s.environ.inner.iter()
+    // Build full prefix (prefix_ + category_)
+    fullPrefix := s.prefix
+    if fullPrefix != "" {
+        fullPrefix += "_"
+    }
+    if s.category != "" {
+        fullPrefix += s.category + "_"
+    }
+    // Root-level prefix for fallback buffering (prefix_)
+    rootPrefix := s.prefix
+    if rootPrefix != "" {
+        rootPrefix += "_"
+    }
+    var keys, values []string
+    var index int
+    return func() (key string, value string, ok bool) {
+        if next != nil {
+            for {
+                k, v, b := next()
+                if !b {
+                    // Switch to buffered results
+                    next = nil
+                    break
+                }
+                if strings.HasPrefix(k, fullPrefix) {
+                    return strings.TrimPrefix(k, fullPrefix), v, true
+                }
+                // Buffer keys with root prefix for fallback (only when prefix is set)
+                if rootPrefix != "" && strings.HasPrefix(k, rootPrefix) {
+                    keys = append(keys, strings.TrimPrefix(k, rootPrefix))
+                    values = append(values, v)
+                }
+            }
+        }
+        if index >= len(keys) {
+            return "", "", false
+        }
+        k := keys[index]
+        v := values[index]
+        index++
+        return k, v, true
+    }
 }
