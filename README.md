@@ -1,5 +1,7 @@
 # env — Environment variable management for Go
 
+![CI](https://github.com/go-slim/env/actions/workflows/ci.yml/badge.svg)
+
 A small, dependency-light helper to load and query environment variables, with:
 
 - Scoped lookups via a Signer: `PREFIX` and optional `CATEGORY` (e.g. `CACHE_BOOK_*` falling back to `CACHE_*`).
