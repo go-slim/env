@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,6 +26,7 @@ jobs:
           cache: true
 
       - name: Verify go.mod is tidy
+        shell: bash
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
@@ -34,6 +38,7 @@ jobs:
         run: go vet ./...
 
       - name: Check formatting
+        shell: bash
         run: |
           fmtout=$(gofmt -s -l .)
           if [ -n "$fmtout" ]; then
@@ -46,7 +51,10 @@ jobs:
         run: go test -v ./...
 
   bench:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,6 +66,7 @@ jobs:
           cache: true
 
       - name: Run benchmarks
+        shell: bash
         run: |
           mkdir -p artifacts
           go test -bench . -benchmem -run '^$' ./... | tee artifacts/bench.txt
