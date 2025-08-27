@@ -15,7 +15,9 @@ func TestSigner_LookupExists_Fallback(t *testing.T) {
 	if v, ok := web.Lookup("HOST"); !ok || v != "0.0.0.0" {
 		t.Fatalf("WEB HOST lookup failed, got (%v,%v)", v, ok)
 	}
-	if !web.Exists("HOST") { t.Fatalf("WEB HOST exists should be true") }
+	if !web.Exists("HOST") {
+		t.Fatalf("WEB HOST exists should be true")
+	}
 
 	// Fallback to prefix-level when category missing
 	if v, ok := web.Lookup("PORT"); !ok || v != "8080" {

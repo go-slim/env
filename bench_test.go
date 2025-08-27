@@ -110,12 +110,12 @@ func BenchmarkWhereFilter(b *testing.B) {
 }
 
 // Structure for Fill benchmarks
- type cfg struct {
+type cfg struct {
 	Port   int    `env:"APP_PORT"`
 	Env    string `env:"APP_ENV"`
 	Debug  bool   `env:"APP_DEBUG"`
 	Hidden string // no tag
- }
+}
 
 func BenchmarkFill(b *testing.B) {
 	e := Default()

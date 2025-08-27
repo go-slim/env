@@ -10,10 +10,10 @@ func TestEnviron_Save_Lookup_Exists_Map_Where(t *testing.T) {
 	e := New().(*environ)
 	// Save values, including an empty one
 	e.Save(map[string]string{
-		"A":        "1",
-		"B":        "",
-		"GROUP_X":  "x",
-		"GROUP_Y":  "y",
+		"A":         "1",
+		"B":         "",
+		"GROUP_X":   "x",
+		"GROUP_Y":   "y",
 		"IGNORED_Z": "z",
 	})
 
@@ -54,10 +54,10 @@ func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 	})
 	// Prefix-level fallbacks
 	e.Save(map[string]string{
-		"APP_PORT":   "8080",
+		"APP_PORT":    "8080",
 		"APP_TIMEOUT": "200ms",
 		"APP_RATE":    "2.5",
-		"APP_ENABLED":  "1",
+		"APP_ENABLED": "1",
 	})
 
 	s := e.Signed("APP", "WEB")
@@ -89,12 +89,12 @@ func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 func TestSigner_Fill_Struct(t *testing.T) {
 	e := New().(*environ)
 	e.Save(map[string]string{
-		"APP_WEB_HOST":    "localhost",
-		"APP_PORT":        "9000",     // fallback for WEB
-		"APP_WEB_DEBUG":   "false",
-		"APP_TIMEOUT":     "1s",       // fallback
-		"APP_WEB_RATE":    "1.5",
-		"APP_FEATURE_FLAG": "true",    // nested
+		"APP_WEB_HOST":     "localhost",
+		"APP_PORT":         "9000", // fallback for WEB
+		"APP_WEB_DEBUG":    "false",
+		"APP_TIMEOUT":      "1s", // fallback
+		"APP_WEB_RATE":     "1.5",
+		"APP_FEATURE_FLAG": "true", // nested
 	})
 	type Feature struct {
 		Flag bool `env:"FEATURE_FLAG"`

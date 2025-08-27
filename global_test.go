@@ -16,52 +16,62 @@ func writeFile(t *testing.T, dir, name, content string) string {
 }
 
 func TestClean_ResetsState_And_PathJoin(t *testing.T) {
-    dir := t.TempDir()
-    writeFile(t, dir, ".env", "K=V\nAPP_ENV=dev\n")
-    if err := InitWithDir(dir); err != nil {
-        t.Fatalf("InitWithDir: %v", err)
-    }
+	dir := t.TempDir()
+	writeFile(t, dir, ".env", "K=V\nAPP_ENV=dev\n")
+	if err := InitWithDir(dir); err != nil {
+		t.Fatalf("InitWithDir: %v", err)
+	}
 
-    if v, ok := Lookup("K"); !ok || v != "V" {
-        t.Fatalf("pre-clean Lookup K failed: %q,%v", v, ok)
-    }
-    // Path join
-    if got := Path("a", "b"); got != filepath.Join(dir, "a", "b") {
-        t.Fatalf("Path join unexpected: %q", got)
-    }
-    // Deprecated IsEnv mirrors String("APP_ENV")
-    if !IsEnv("dev") {
-        t.Fatalf("IsEnv(dev) should be true")
-    }
+	if v, ok := Lookup("K"); !ok || v != "V" {
+		t.Fatalf("pre-clean Lookup K failed: %q,%v", v, ok)
+	}
+	// Path join
+	if got := Path("a", "b"); got != filepath.Join(dir, "a", "b") {
+		t.Fatalf("Path join unexpected: %q", got)
+	}
+	// Deprecated IsEnv mirrors String("APP_ENV")
+	if !IsEnv("dev") {
+		t.Fatalf("IsEnv(dev) should be true")
+	}
 
-    // Clean and verify
-    Default().Clean()
-    if _, ok := Lookup("K"); ok {
-        t.Fatalf("Lookup K should be false after Clean")
-    }
+	// Clean and verify
+	Default().Clean()
+	if _, ok := Lookup("K"); ok {
+		t.Fatalf("Lookup K should be false after Clean")
+	}
 }
 
 func TestGlobal_Wrappers_Work(t *testing.T) {
-    dir := t.TempDir()
-    writeFile(t, dir, ".env", "A=1\nB=true\nC=a,b\n")
-    if err := InitWithDir(dir); err != nil {
-        t.Fatalf("InitWithDir: %v", err)
-    }
-    t.Cleanup(func() { Default().Clean() })
+	dir := t.TempDir()
+	writeFile(t, dir, ".env", "A=1\nB=true\nC=a,b\n")
+	if err := InitWithDir(dir); err != nil {
+		t.Fatalf("InitWithDir: %v", err)
+	}
+	t.Cleanup(func() { Default().Clean() })
 
-    if v, ok := Lookup("A"); !ok || v != "1" { t.Fatalf("Lookup A failed") }
-    if !Exists("A") { t.Fatalf("Exists A should be true") }
-    if String("A") != "1" { t.Fatalf("String A") }
-    if Int("A") != 1 { t.Fatalf("Int A") }
-    if !Bool("B") { t.Fatalf("Bool B") }
-    list := List("C")
-    if len(list) != 2 || list[0] != "a" || list[1] != "b" {
-        t.Fatalf("List C unexpected: %#v", list)
-    }
-    all := All()
-    if all["A"] != "1" || all["B"] != "true" {
-        t.Fatalf("All unexpected: %#v", all)
-    }
+	if v, ok := Lookup("A"); !ok || v != "1" {
+		t.Fatalf("Lookup A failed")
+	}
+	if !Exists("A") {
+		t.Fatalf("Exists A should be true")
+	}
+	if String("A") != "1" {
+		t.Fatalf("String A")
+	}
+	if Int("A") != 1 {
+		t.Fatalf("Int A")
+	}
+	if !Bool("B") {
+		t.Fatalf("Bool B")
+	}
+	list := List("C")
+	if len(list) != 2 || list[0] != "a" || list[1] != "b" {
+		t.Fatalf("List C unexpected: %#v", list)
+	}
+	all := All()
+	if all["A"] != "1" || all["B"] != "true" {
+		t.Fatalf("All unexpected: %#v", all)
+	}
 }
 
 func TestGlobal_Init_Path_Is_All_Load_Signed(t *testing.T) {
