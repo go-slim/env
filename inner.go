@@ -28,7 +28,7 @@ func (i *inner) Exists(key string) bool {
 	return i.exists(key)
 }
 
-// String 取字符串值
+// String retrieves the string value.
 func (i *inner) String(key string, fallback ...string) string {
 	if value, exists := i.Lookup(key); exists {
 		return value
@@ -39,7 +39,7 @@ func (i *inner) String(key string, fallback ...string) string {
 	return ""
 }
 
-// Bytes 取二进制值
+// Bytes retrieves the byte slice value.
 func (i *inner) Bytes(key string, fallback ...[]byte) []byte {
 	if value, exists := i.Lookup(key); exists {
 		return []byte(value)
@@ -50,7 +50,7 @@ func (i *inner) Bytes(key string, fallback ...[]byte) []byte {
 	return []byte{}
 }
 
-// Int 取整型值
+// Int retrieves the integer value.
 func (i *inner) Int(key string, fallback ...int) int {
 	if val, exists := i.Lookup(key); exists {
 		if n, err := strconv.Atoi(val); err == nil {
@@ -105,7 +105,7 @@ func (i *inner) Bool(key string, fallback ...bool) bool {
 	return false
 }
 
-// List 将值按 `,` 分割并返回
+// List splits the value by comma and returns a string slice.
 func (i *inner) List(key string, fallback ...[]string) []string {
 	if value, ok := i.Lookup(key); ok {
 		parts := strings.Split(value, ",")
@@ -120,7 +120,7 @@ func (i *inner) List(key string, fallback ...[]string) []string {
 	return []string{}
 }
 
-// Map 获取指定前缀的所有值
+// Map retrieves all values with the specified prefix.
 func (i *inner) Map(prefix string) map[string]string {
 	result := map[string]string{}
 	next := i.iter()
@@ -136,7 +136,7 @@ func (i *inner) Map(prefix string) map[string]string {
 	}
 }
 
-// Where 获取符合过滤器的所有值
+// Where retrieves all values that match the filter.
 func (i *inner) Where(filter func(name, value string) bool) map[string]string {
 	result := map[string]string{}
 	next := i.iter()
@@ -151,7 +151,7 @@ func (i *inner) Where(filter func(name, value string) bool) map[string]string {
 	}
 }
 
-// Fill 将环境变量填充到指定结构体
+// Fill populates the specified struct with environment variables.
 func (i *inner) Fill(structure any) error {
 	inputType := reflect.TypeOf(structure)
 

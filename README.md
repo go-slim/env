@@ -2,6 +2,8 @@
 
 ![CI](https://github.com/go-slim/env/actions/workflows/ci.yml/badge.svg)
 
+[中文](README.zh-CN.md) | English
+
 A small, dependency-light helper to load and query environment variables, with:
 
 - Scoped lookups via a Signer: `PREFIX` and optional `CATEGORY` (e.g. `CACHE_BOOK_*` falling back to `CACHE_*`).
@@ -10,6 +12,23 @@ A small, dependency-light helper to load and query environment variables, with:
 - Global helpers and `.env` loader chain: `.env`, `.env.local`, `.env.<APP_ENV>`, `.env.<APP_ENV>.local`.
 
 Module path: `go-slim.dev/env`
+
+## Design Philosophy
+
+This library follows an **"Initialize Once, Read Many"** pattern:
+
+1. **Initialization Phase**: Load environment variables once during application startup (typically in `main()`)
+2. **Runtime Phase**: Read environment variables safely across multiple goroutines
+
+### Thread Safety Model
+
+| Operation | Thread Safety | When to Use |
+|-----------|--------------|-------------|
+| `Init()`, `InitWithDir()`, `Load()` | ❌ NOT thread-safe | Call once at startup |
+| `Lookup()`, `String()`, `Int()`, etc. | ✅ Thread-safe | Safe for concurrent use |
+| `Signed()`, `Fill()`, `Map()`, `Where()` | ✅ Thread-safe | Safe for concurrent use |
+
+**Key Point**: Initialization functions modify global state and must be called before starting goroutines.
 
 ## Install
 
@@ -26,13 +45,25 @@ package main
 
 import (
     "fmt"
+    "log"
     env "go-slim.dev/env"
 )
 
 func main() {
-    // Initialize from current directory (loads .env files if present)
-    _ = env.Init() // ignore error if no .env files exist
+    // ✓ INITIALIZATION: Call Init() once at startup (single-threaded)
+    if err := env.Init(); err != nil {
+        log.Fatal(err)
+    }
 
+    // ✓ BEST PRACTICE: Lock after initialization
+    env.Lock()
+
+    // ✓ RUNTIME: Safe to read from multiple goroutines
+    go worker1()
+    go worker2()
+}
+
+func worker1() {
     // Signed lookups group by prefix and optional category.
     // Keys are matched as: PREFIX_CATEGORY_KEY first, then fallback to PREFIX_KEY.
     cache := env.Signed("CACHE", "BOOK")
@@ -43,6 +74,27 @@ func main() {
     database := cache.Int("DATABASE")        // from CACHE_BOOK_DATABASE else CACHE_DATABASE
 
     fmt.Println(driver, database)
+}
+
+func worker2() {
+    // Direct reads are also safe
+    port := env.Int("PORT", 8080)
+    fmt.Println("Port:", port)
+}
+```
+
+### ❌ Incorrect Usage
+
+```go
+func main() {
+    // WRONG: Don't call Init() concurrently!
+    go env.Init()  // Data race!
+    go env.Init()  // Data race!
+
+    // WRONG: Don't modify environment during runtime!
+    go func() {
+        env.Load(".env.runtime")  // Data race if other goroutines are reading!
+    }()
 }
 ```
 

@@ -1,17 +1,75 @@
+// Package env provides environment variable management for Go applications.
+//
+// # Design Philosophy: Initialize Once, Read Many
+//
+// This package is designed with a specific usage pattern in mind:
+//
+//  1. INITIALIZATION PHASE: Load environment variables once during application startup
+//     (typically in main() before starting any goroutines)
+//  2. RUNTIME PHASE: Read environment variables concurrently throughout the application lifecycle
+//
+// # Correct Usage Pattern
+//
+//	func main() {
+//	    // ✓ INITIALIZATION: Call Init() once at startup (single-threaded)
+//	    if err := env.Init(); err != nil {
+//	        log.Fatal(err)
+//	    }
+//
+//	    // ✓ BEST PRACTICE: Lock after initialization to prevent accidental writes
+//	    env.Lock()
+//
+//	    // ✓ RUNTIME: Read operations are safe for concurrent use
+//	    go func() {
+//	        cache := env.Signed("CACHE", "BOOK")
+//	        driver := cache.String("DRIVER")  // Safe: read-only
+//	    }()
+//
+//	    go func() {
+//	        port := env.Int("PORT", 8080)     // Safe: read-only
+//	    }()
+//	}
+//
+// # Incorrect Usage Pattern
+//
+//	func main() {
+//	    // ✗ WRONG: Calling Init() concurrently causes data races
+//	    go env.Init()  // DON'T DO THIS
+//	    go env.Init()  // DON'T DO THIS
+//
+//	    // ✗ WRONG: Modifying environment during runtime causes data races
+//	    go func() {
+//	        env.Load(".env.runtime")  // DON'T DO THIS during runtime
+//	    }()
+//	}
+//
+// # Thread Safety Guarantees
+//
+//   - Init/InitWithDir/Load: NOT thread-safe. Call once during initialization.
+//   - Lookup/String/Int/Bool/etc: Thread-safe. Safe for concurrent reads.
+//   - Signed: Thread-safe. Returns a reader that is safe for concurrent use.
+//   - Fill: Thread-safe for reading. Safe to call concurrently after initialization.
+//
+// No locks are needed because:
+//   - Initialization happens in a single-threaded context
+//   - Runtime access is read-only (Go slice reads are safe without locks)
+//   - Environment data never changes after initialization completes
 package env
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
 
-// Signer 签名查询器
+// Signer is a scoped query interface for environment variables.
 //
-// 用于操作相同前缀但需要区分不同场景的环境变量时十分有用，比如
-// 我们通过环境变量文件配置缓存配置
+// It is useful when working with environment variables that share the same prefix
+// but need to be distinguished by different scenarios. For example, when configuring
+// cache settings via environment variables:
 //
 //	CACHE_DRIVER=redis
 //	CACHE_DATABASE=1
@@ -19,65 +77,113 @@ import (
 //	CACHE_BOOK_DATABASE=10
 //	CACHE_BOOK_SCOPE=app:books:
 //
-// 那么我们就可以十分方便的使用:
+// You can conveniently use:
 //
 //	cache := env.Signed("CACHE", "BOOK")
 //	cache.String("DRIVER") // redis
 //	cache.Int("DATABASE")  // 10
 //	cache.String("SCOPE")  // app:books:
 //
-// 这样就方便我们对环境变量简单分组分场景使用了。
+// This allows easy grouping and scenario-based usage of environment variables.
 type Signer interface {
-	// Lookup 返回指定键的数据，只有存在指定的环境变量并且其值不为空时，
-	// 第二个返回值为 true，其它情况下，均返回 false，与方法 Exists 有所区别。
+	// Lookup returns the value for the specified key. The second return value is true
+	// only if the environment variable exists and its value is not empty. Otherwise,
+	// it returns false. This differs from the Exists method.
 	Lookup(key string) (string, bool)
-	// Exists 判断指定键的数据是否存在
-	// 只要存在键名就返回 true，不存在返回 false。
+	// Exists checks whether the specified key exists.
+	// Returns true if the key exists, false otherwise.
 	Exists(key string) bool
-	// String 返回指定键的数据的字符串形式，当数据不存在或值为空时返回默认值
+	// String returns the string value for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	String(key string, fallback ...string) string
-	// Bytes 返回指定键的数据的字节切片值，当数据不存在或值为空时返回默认值
+	// Bytes returns the byte slice value for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	Bytes(key string, fallback ...[]byte) []byte
-	// Int 返回指定键的数据的整数值，当数据不存在或值为空时返回默认值
+	// Int returns the integer value for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	Int(key string, fallback ...int) int
-	// Duration 返回指定键的数据的时长值，当数据不存在或值为空时返回默认值
+	// Duration returns the duration value for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	Duration(key string, fallback ...time.Duration) time.Duration
-	// Bool 返回指定键的数据的布尔值，当数据不存在或值为空时返回默认值
+	// Bool returns the boolean value for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	Bool(key string, fallback ...bool) bool
-	// List 返回指定键的数据的字符串列表（使用英文逗号分割），当数据不存在或值为空时返回默认值
+	// List returns the string list (comma-separated) for the specified key, or the fallback value
+	// if the key does not exist or the value is empty.
 	List(key string, fallback ...[]string) []string
-	// Map 将具体相同前缀的键的数据聚合起来返回
+	// Map aggregates and returns data for keys with the same prefix.
 	Map(prefix string) map[string]string
-	// Where 返回通过自定义函数过滤的数据
+	// Where returns data filtered by a custom function.
 	Where(filter func(name, value string) bool) map[string]string
-	// Fill 使用环境变量填充结构体
+	// Fill populates a struct with environment variables.
 	Fill(structure any) error
 }
 
 type Environ interface {
 	Signer
-	// Load 加载定义环境变量的文件
+	// Read parses environment variables from an io.Reader.
+	Read(r io.Reader) error
+	// Load loads environment variable files.
 	Load(filenames ...string) error
-	// Signed 返回复合一个规则的签名查询器
+	// Signed returns a Signer that follows a specific prefix and category rule.
 	Signed(prefix, category string) Signer
-	// Clean 清理缓存的所有数据
+	// Clean clears all cached data.
 	Clean()
+	// Lock prevents further write operations (Save/Load/Read/Clean).
+	// After calling Lock, any attempt to modify the environment will result in
+	// a panic or error. This should be called after initialization is complete
+	// to enforce the "read-only" contract during runtime.
+	Lock()
 }
 
 var (
-	// 全局缓存的环境变量
+	// env is the global cached environment variable storage.
 	env = New().(*environ)
-	// 环境变量文件 `.env` 所处的目录
-	// 一般位于程序的工作目录
+	// root is the directory where the `.env` file is located.
+	// Typically the working directory of the program.
 	root string
 )
 
-// Default 返回默认操作对象
+// Default returns the default Environ instance.
+//
+// Thread Safety: The returned Environ is safe for concurrent READ operations
+// after initialization. Do not call Save/Load methods concurrently.
 func Default() Environ {
 	return env
 }
 
-// Init 加载运行目录下的 .env 文件
+// Init loads .env files from the runtime directory.
+//
+// # Initialization Function - NOT Thread-Safe
+//
+// This function modifies global state and MUST be called:
+//   - Once during application startup (typically in main())
+//   - Before any goroutines are started
+//   - In a single-threaded context
+//
+// Concurrent calls to Init/InitWithDir will cause data races and undefined behavior.
+//
+// After Init completes successfully, all read operations (Lookup, String, Int, etc.)
+// are safe for concurrent use across multiple goroutines.
+//
+// Example:
+//
+//	func main() {
+//	    // ✓ CORRECT: Call once at startup
+//	    if err := env.Init(); err != nil {
+//	        log.Fatal(err)
+//	    }
+//
+//	    // Now safe to use concurrently
+//	    go worker1()
+//	    go worker2()
+//	}
+//
+//	// ✗ WRONG: Never do this
+//	func main() {
+//	    go env.Init()  // Data race!
+//	    go env.Init()  // Data race!
+//	}
 func Init(root ...string) error {
 	var dir string
 	if len(root) > 0 {
@@ -89,7 +195,12 @@ func Init(root ...string) error {
 	return InitWithDir(dir)
 }
 
-// InitWithDir 加载指定录下的 .env 文件
+// InitWithDir loads .env files from the specified directory.
+//
+// # Initialization Function - NOT Thread-Safe
+//
+// This function modifies global state. See Init() documentation for usage guidelines.
+// Must be called once during initialization, not concurrently.
 func InitWithDir(dir string) (err error) {
 	dir, err = filepath.Abs(dir)
 	if err != nil {
@@ -105,11 +216,11 @@ func InitWithDir(dir string) (err error) {
 		}
 	}()
 
-	// 重置缓存的环境变量
+	// Reset cached environment variables
 	root = ""
 	env.Clean()
 
-	// 加载系统的环境变量
+	// Load system environment variables
 	result := make(map[string]string)
 	for _, value := range os.Environ() {
 		parts := strings.SplitN(value, "=", 2)
@@ -119,19 +230,19 @@ func InitWithDir(dir string) (err error) {
 	}
 	env.Save(result)
 
-	// 加载 .env 和 .env.local 文件
+	// Load .env and .env.local files
 	err = loadEnv(dir, "")
 	if err != nil {
 		return err
 	}
 
-	// 加载与运行环境相关的环境变量
+	// Load environment-specific variables
 	appEnv := String("APP_ENV", "prod")
 	if len(appEnv) > 0 {
 		env.Save(map[string]string{
 			"APP_ENV": appEnv,
 		})
-		// 加载 .env.{APP_ENV} 和 .env.{APP_ENV}.local 文件
+		// Load .env.{APP_ENV} and .env.{APP_ENV}.local files
 		err = loadEnv(dir, "."+strings.ToLower(appEnv))
 		if err != nil {
 			return err
@@ -156,16 +267,60 @@ func loadEnv(dir, env string) error {
 	return nil
 }
 
-// Load 加载指定的环境变量文件
+// Load loads the specified environment variable files.
+//
+// # Initialization Function - NOT Thread-Safe
+//
+// This function modifies the global environment state. It should only be called
+// during the initialization phase, not during runtime when multiple goroutines
+// are accessing environment variables.
+//
+// Typical usage: call during startup to load additional .env files.
+// Returns ErrLocked if Lock() has been called.
 func Load(filenames ...string) error {
 	return env.Load(filenames...)
 }
 
+// Lock prevents further write operations on the global environment.
+//
+// After calling Lock(), any attempt to call Init(), Load(), or modify the
+// global environment will result in errors or panics. This enforces the
+// "read-only" contract during the runtime phase.
+//
+// Best Practice: Call Lock() immediately after initialization to prevent
+// accidental modifications during runtime.
+//
+// Example:
+//
+//	func main() {
+//	    // Initialization phase
+//	    if err := env.Init(); err != nil {
+//	        log.Fatal(err)
+//	    }
+//
+//	    // Lock to prevent further modifications
+//	    env.Lock()
+//
+//	    // Runtime phase - only reads allowed
+//	    go worker1()
+//	    go worker2()
+//	}
+//
+// Lock is idempotent - calling it multiple times is safe.
+// Once locked, the global environment cannot be unlocked.
+func Lock() {
+	env.Lock()
+}
+
+// Signed returns a Signer scoped by the given prefix and category.
+//
+// Thread Safety: This function is safe to call concurrently after initialization.
+// The returned Signer is safe for concurrent read operations.
 func Signed(prefix, category string) Signer {
 	return env.Signed(prefix, category)
 }
 
-// Path 基于初始化目录获取目录
+// Path returns a path relative to the initialization directory.
 func Path(path ...string) string {
 	switch len(path) {
 	case 0:
@@ -177,6 +332,7 @@ func Path(path ...string) string {
 	}
 }
 
+// Is checks if the application environment matches any of the provided values.
 func Is(env ...string) bool {
 	if len(env) == 0 {
 		return false
@@ -191,14 +347,7 @@ func Is(env ...string) bool {
 	return false
 }
 
-// IsEnv 判断应用环境是否与给出的一致
-//
-// Deprecated: 使用 env.Is 方法代理
-func IsEnv(env string) bool {
-	return String("APP_ENV") == env
-}
-
-// Inject 尝试将数据注入到到 Environ 里面
+// Inject attempts to inject data into the Environ instance.
 func Inject(env Environ, data map[string]string) bool {
 	if env == nil || len(data) == 0 {
 		return false
@@ -210,62 +359,93 @@ func Inject(env Environ, data map[string]string) bool {
 	return false
 }
 
-// Lookup 查看配置
+// Lookup retrieves the value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Lookup(name string) (string, bool) {
 	return env.Lookup(name)
 }
 
-// Exists 配置是否存在
+// Exists checks if an environment variable exists.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Exists(name string) bool {
 	return env.Exists(name)
 }
 
-// String 取字符串值
+// String retrieves the string value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func String(name string, value ...string) string {
 	return env.String(name, value...)
 }
 
-// Bytes 取二进制值
+// Bytes retrieves the byte slice value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Bytes(name string, value ...[]byte) []byte {
 	return env.Bytes(name, value...)
 }
 
-// Int 取整型值
+// Int retrieves the integer value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Int(name string, value ...int) int {
 	return env.Int(name, value...)
 }
 
+// Float retrieves the float64 value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Float(name string, value ...float64) float64 {
 	return env.Float(name, value...)
 }
 
+// Duration retrieves the duration value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Duration(name string, value ...time.Duration) time.Duration {
 	return env.Duration(name, value...)
 }
 
+// Bool retrieves the boolean value of an environment variable.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Bool(name string, value ...bool) bool {
 	return env.Bool(name, value...)
 }
 
-// List 将值按 `,` 分割并返回
+// List splits the value by comma and returns a string slice.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func List(name string, fallback ...[]string) []string {
 	return env.List(name, fallback...)
 }
 
+// Map returns all environment variables with the given prefix.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Map(prefix string) map[string]string {
 	return env.Map(prefix)
 }
 
+// Where returns all environment variables that match the filter function.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Where(filter func(name string, value string) bool) map[string]string {
 	return env.Where(filter)
 }
 
-// Fill 将环境变量填充到指定结构体
+// Fill populates the specified struct with environment variables.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func Fill(structure any) error {
 	return env.Fill(structure)
 }
 
-// All 返回所有值
+// All returns all environment variables.
+//
+// Thread Safety: Safe for concurrent use after initialization.
 func All() map[string]string {
 	return env.Where(func(name, value string) bool {
 		return true

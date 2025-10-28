@@ -29,9 +29,9 @@ func TestClean_ResetsState_And_PathJoin(t *testing.T) {
 	if got := Path("a", "b"); got != filepath.Join(dir, "a", "b") {
 		t.Fatalf("Path join unexpected: %q", got)
 	}
-	// Deprecated IsEnv mirrors String("APP_ENV")
-	if !IsEnv("dev") {
-		t.Fatalf("IsEnv(dev) should be true")
+	// Is checks if APP_ENV matches
+	if !Is("dev") {
+		t.Fatalf("Is(dev) should be true")
 	}
 
 	// Clean and verify
