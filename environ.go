@@ -8,7 +8,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var _ Signer = &environ{}
+var _ Signer = (*environ)(nil)
 
 // ErrLocked is returned when attempting to modify a locked Environ.
 var ErrLocked = errors.New("env: environ is locked, write operations are not allowed after Lock() is called")
@@ -32,9 +32,9 @@ var ErrLocked = errors.New("env: environ is locked, write operations are not all
 // initialization to prevent accidental writes during the runtime phase.
 type environ struct {
 	inner
-	keys   []string     // Environment variable keys (read-only after init)
-	values []string     // Environment variable values (read-only after init, parallel to keys)
-	locked atomic.Bool  // Prevents write operations after Lock() is called
+	keys   []string    // Environment variable keys (read-only after init)
+	values []string    // Environment variable values (read-only after init, parallel to keys)
+	locked atomic.Bool // Prevents write operations after Lock() is called
 }
 
 // New creates a new Environ instance.

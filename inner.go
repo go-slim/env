@@ -12,7 +12,7 @@ import (
 	"go-slim.dev/cast"
 )
 
-var _ Signer = &inner{}
+var _ Signer = (*inner)(nil)
 
 type inner struct {
 	lookup func(key string) (string, bool)

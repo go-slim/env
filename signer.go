@@ -2,7 +2,7 @@ package env
 
 import "strings"
 
-var _ Signer = &signer{}
+var _ Signer = (*signer)(nil)
 
 // signer implements the Signer interface with scoped environment variable lookups.
 //
@@ -29,9 +29,9 @@ var _ Signer = &signer{}
 //	  .Int("DATABASE")    → 10 (from CACHE_BOOK_DATABASE, category-specific)
 type signer struct {
 	inner
-	prefix   string    // The prefix for grouping related variables (e.g., "CACHE")
-	category string    // Optional category for sub-grouping (e.g., "BOOK")
-	environ  *environ  // Reference to the underlying environment storage
+	prefix   string   // The prefix for grouping related variables (e.g., "CACHE")
+	category string   // Optional category for sub-grouping (e.g., "BOOK")
+	environ  *environ // Reference to the underlying environment storage
 }
 
 // newSigner creates a new Signer instance with the specified prefix and category.
