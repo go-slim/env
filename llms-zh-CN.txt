@@ -1,0 +1,436 @@
+# env - 环境变量管理库
+
+> go-slim.dev/env
+
+一个为 Go 应用程序设计的线程安全、高性能环境变量管理库。
+
+## 设计理念：一次初始化，多次读取
+
+本库遵循专为性能和安全设计的特定使用模式：
+
+1. **初始化阶段**：在应用程序启动时一次性加载环境变量（单线程）
+2. **运行时阶段**：在整个应用程序生命周期中并发读取环境变量（多线程）
+
+## 项目结构
+
+```
+env/
+├── env.go          - 主 API、全局函数、初始化逻辑
+├── environ.go      - 核心环境变量存储实现
+├── signer.go       - 作用域环境变量访问
+├── inner.go        - 类型转换和结构体填充
+├── *_test.go       - 完整测试套件
+├── go.mod          - 模块定义
+└── .github/workflows/ - CI/CD 配置
+```
+
+## 核心架构
+
+### 线程安全模型
+
+- **写操作**（Save、Load、Read、Clean）：非线程安全，仅用于初始化
+- **读操作**（Lookup、String、Int、Bool 等）：初始化后线程安全
+
+设计通过以下方式消除锁的需求：
+- 单线程初始化（无并发写操作）
+- 只读运行时（Go 切片读操作在无并发写时安全）
+- 迭代器使用原子位置跟踪
+
+### 关键组件
+
+#### Environ 接口
+- `Signer`：环境变量的作用域查询接口
+- `Lookup/Exists`：基本值检索
+- `String/Int/Bool/Duration/List`：类型化值检索
+- `Map/Where`：高级过滤和聚合
+- `Fill`：用环境变量填充结构体
+- `Lock`：在运行时强制执行只读约定
+
+#### 环境变量存储
+- `environ`：带有键/值切片的核心实现
+- `signer`：带前缀/类别回退的层次化查找
+- `inner`：类型转换工具
+
+## 使用模式
+
+### 正确使用模式
+
+```go
+func main() {
+    // ✓ 初始化阶段：在启动时调用一次 Init()（单线程）
+    if err := env.Init(); err != nil {
+        log.Fatal(err)
+    }
+
+    // ✓ 最佳实践：初始化后锁定以防止意外写入
+    env.Lock()
+
+    // ✓ 运行时阶段：读操作可安全并发使用
+    go func() {
+        cache := env.Signed("CACHE", "BOOK")
+        driver := cache.String("DRIVER")  // 安全：只读
+        timeout := cache.Duration("TIMEOUT", 30*time.Second)
+    }()
+
+    go func() {
+        port := env.Int("PORT", 8080)     // 安全：只读
+        debug := env.Bool("DEBUG", false) // 安全：只读
+    }()
+}
+```
+
+### 错误使用模式
+
+```go
+func main() {
+    // ✗ 错误：并发调用 Init() 会导致数据竞争
+    go env.Init()  // 不要这样做
+    go env.Init()  // 不要这样做
+
+    // ✗ 错误：运行时修改环境变量会导致数据竞争
+    go func() {
+        env.Load(".env.runtime")  // 运行时不要这样做
+    }()
+}
+```
+
+## 核心功能
+
+### 分层环境变量
+
+`Signer` 接口提供带回退行为的作用域访问：
+
+```go
+// 环境变量：
+//   CACHE_DRIVER=redis
+//   CACHE_DATABASE=1
+//   CACHE_BOOK_DATABASE=10
+//   CACHE_BOOK_SCOPE=app:books:
+
+// 使用作用域访问
+cache := env.Signed("CACHE", "BOOK")
+driver := cache.String("DRIVER")   // redis（来自 CACHE_DRIVER，回退）
+database := cache.Int("DATABASE")   // 10（来自 CACHE_BOOK_DATABASE，特定）
+scope := cache.String("SCOPE")      // app:books:（来自 CACHE_BOOK_SCOPE）
+```
+
+### 查找策略
+
+对于 prefix="CACHE", category="BOOK", key="DATABASE"：
+1. 首先尝试：`CACHE_BOOK_DATABASE`
+2. 回退到：`CACHE_DATABASE`（如果类别特定未找到）
+
+这允许在前缀级别设置通用设置，并在类别级别进行特定覆盖。
+
+### 结构体填充
+
+```go
+type Config struct {
+    Port     int           `env:"PORT"`
+    Debug    bool          `env:"DEBUG"`
+    Database DatabaseConfig
+}
+
+type DatabaseConfig struct {
+    Driver string `env:"DB_DRIVER"`
+    Host   string `env:"DB_HOST"`
+    Port   int    `env:"DB_PORT"`
+}
+
+var config Config
+env.Fill(&config)
+```
+
+## 实现细节
+
+### 文件加载顺序
+
+1. 系统环境变量（os.Environ()）
+2. `.env` 和 `.env.local` 文件
+3. `.env.{APP_ENV}` 和 `.env.{APP_ENV}.local` 文件
+4. 通过 `Load()` 调用的额外文件
+
+### 并发迭代器设计
+
+```go
+func (e *environ) iter() func() (key string, value string, ok bool) {
+    var pos int32 = -1  // 原子位置计数器
+    return func() (key string, value string, ok bool) {
+        index := int(atomic.AddInt32(&pos, 1))
+        if index >= len(e.keys) {
+            return "", "", false
+        }
+        return e.keys[index], e.values[index], true
+    }
+}
+```
+
+- 使用 `atomic.AddInt32` 进行线程安全的位置跟踪
+- 多个 goroutine 可以安全地使用同一个迭代器
+- 由于只读运行时设计，无需锁
+
+### Signer 迭代器与缓冲
+
+`signer.iter()` 实现两阶段方法：
+
+**阶段 1**：类别特定迭代
+- 立即返回 `PREFIX_CATEGORY_*` 变量
+- 缓冲 `PREFIX_*` 变量用于回退
+
+**阶段 2**：回退迭代
+- 返回缓冲的 `PREFIX_*` 变量
+- 确保在类别特定变量后提供回退值
+
+## 错误处理
+
+- `ErrLocked`：尝试修改已锁定环境时返回
+- `os.ErrNotExist`：.env 文件不存在时返回（非致命）
+- 类型转换错误：由 `Fill()` 方法返回
+- Panic：Lock() 后调用 Save/Clean 时发生（编程错误）
+
+## 性能考虑
+
+1. **零锁设计**：由于只读模式，运行时无锁
+2. **高效存储**：键/值对使用并行切片
+3. **原子迭代**：无锁并发迭代
+4. **最小分配**：重用现有字符串存储
+
+## 依赖关系
+
+- **运行时**：仅标准库（reflect、strconv、strings、sync/atomic）
+- **开发**：`github.com/stretchr/testify`（测试）
+- **外部**：`github.com/joho/godotenv`（.env 文件解析）
+
+## 测试
+
+全面的测试覆盖包括：
+- **线程安全**：竞态条件测试、并发访问模式
+- **边界情况**：空值、缺失键、锁定环境
+- **集成**：文件加载、结构体填充、复杂层次
+- **性能**：热路径基准测试
+- **CI/CD**：GitHub Actions 与 act 优化
+
+## 常见模式
+
+### 配置管理
+```go
+// 应用程序配置
+type Config struct {
+    Environment string `env:"APP_ENV"`
+    Debug       bool   `env:"DEBUG"`
+    Port        int    `env:"PORT"`
+}
+
+// 加载配置
+env.Init()
+env.Lock()
+
+var config Config
+env.Fill(&config)
+```
+
+### 服务配置
+```go
+// 数据库配置
+db := env.Signed("DATABASE", "")
+host := db.String("HOST", "localhost")
+port := db.Int("PORT", 5432)
+sslMode := db.String("SSL_MODE", "disable")
+
+// 缓存配置
+cache := env.Signed("CACHE", "")
+driver := cache.String("DRIVER", "memory")
+ttl := cache.Duration("TTL", 5*time.Minute)
+```
+
+### 环境特定设置
+```go
+// 开发环境 vs 生产环境
+if env.Is("development", "dev") {
+    log.SetLevel(log.DebugLevel)
+    env.Signed("DEBUG", "").Bool("ENABLED", true)
+}
+
+// 生产环境安全
+if env.Is("production", "prod") {
+    env.Lock() // 防止运行时修改
+}
+```
+
+## 高级功能详解
+
+### 层次化配置系统
+
+前缀/类别系统支持复杂的应用配置：
+
+```
+# 基础配置
+APP_ENV=production
+DEBUG=false
+PORT=8080
+
+# 数据库配置
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_DRIVER=postgres
+
+# 缓存配置
+CACHE_DRIVER=redis
+CACHE_HOST=localhost
+CACHE_PORT=6379
+CACHE_TTL=300
+
+# 特定服务配置
+CACHE_SESSION_HOST=localhost
+CACHE_SESSION_PORT=6380
+CACHE_SESSION_TTL=3600
+```
+
+访问模式：
+```go
+// 获取数据库配置
+db := env.Signed("DATABASE", "")
+host := db.String("HOST", "localhost")
+port := db.Int("PORT", 5432)
+
+// 获取缓存配置
+cache := env.Signed("CACHE", "")
+driver := cache.String("DRIVER", "memory")
+ttl := cache.Duration("TTL", 5*time.Minute)
+
+// 获取会话特定缓存配置
+sessionCache := env.Signed("CACHE", "SESSION")
+sessionHost := sessionCache.String("HOST", "localhost")
+sessionTTL := sessionCache.Duration("TTL", 1*time.Hour)
+```
+
+### 文件加载层次
+
+1. **系统环境变量**（最高优先级）
+2. **.env.local**（覆盖 .env）
+3. **.env**（基础配置）
+4. **.env.{APP_ENV}.local**（环境特定覆盖）
+5. **.env.{APP_ENV}**（环境特定配置）
+
+### 迭代器缓冲机制
+
+Signer 的迭代器实现了智能缓冲：
+
+```go
+// 环境变量：
+// CACHE_DRIVER=redis
+// CACHE_TTL=300
+// CACHE_SESSION_TTL=3600
+// CACHE_SESSION_PREFIX=session:
+
+cache := env.Signed("CACHE", "SESSION")
+iter := cache.iter()
+
+// 迭代顺序：
+// 1. TTL=3600（来自 CACHE_SESSION_TTL，类别特定）
+// 2. PREFIX=session:（来自 CACHE_SESSION_PREFIX，类别特定）
+// 3. DRIVER=redis（来自 CACHE_DRIVER，回退）
+// 4. TTL=300（来自 CACHE_TTL，回退，但被跳过因为已存在）
+```
+
+### 并发安全保证
+
+1. **原子操作**：使用 `sync/atomic` 进行位置跟踪
+2. **只读切片**：初始化后键/值切片永不修改
+3. **内存屏障**：原子操作提供必要的内存屏障
+4. **无锁设计**：避免运行时锁竞争
+
+## 版本兼容性
+
+- 推荐 Go 1.20+
+- 已在 Go 1.24 测试
+- 向后兼容的 API 设计
+- 原子操作确保线程安全
+
+## 设计原则
+
+1. **性能优先**：零锁运行时设计，最大化吞吐量
+2. **安全强制**：锁定机制防止意外写入
+3. **层次支持**：前缀/类别模式支持复杂配置
+4. **类型安全**：完整类型转换与回退值
+5. **集成就绪**：与现有 Go 部署模式无缝协作
+
+## 迁移指南
+
+从 os.Getenv()：
+
+```go
+// 迁移前
+port := os.Getenv("PORT")
+if port == "" {
+    port = "8080"
+}
+
+// 迁移后
+port := env.String("PORT", "8080")
+```
+
+从其他环境变量库：
+
+```go
+// 初始化一次
+env.Init()
+env.Lock()
+
+// 使用类型化访问而不是字符串解析
+port := env.Int("PORT", 8080)
+debug := env.Bool("DEBUG", false)
+timeout := env.Duration("TIMEOUT", 30*time.Second)
+```
+
+## 注意事项
+
+1. **初始化约束**：Init() 必须在单线程上下文中调用
+2. **锁定机制**：Lock() 是幂等的，多次调用安全
+3. **内存使用**：键/值存储在内存中，适合中小型配置
+4. **类型转换**：Fill() 使用反射，可能有性能开销
+5. **并发安全**：违反初始化模式会导致数据竞争
+
+## 故障排除
+
+### 常见问题
+
+1. **数据竞争检测**：
+   ```bash
+   go test -race ./...
+   ```
+
+2. **配置未加载**：
+   - 检查 Init() 是否在 main() 开始时调用
+   - 验证 .env 文件路径和权限
+
+3. **锁定错误**：
+   - 确保在 Lock() 之前完成所有 Load() 调用
+   - 使用 Inject() 进行测试环境注入
+
+4. **类型转换错误**：
+   - 检查 struct 字段标签
+   - 验证环境变量值格式
+
+### 调试技巧
+
+```go
+// 显示所有环境变量
+all := env.All()
+for k, v := range all {
+    fmt.Printf("%s=%s\n", k, v)
+}
+
+// 检查特定前缀
+cacheVars := env.Map("CACHE_")
+for k, v := range cacheVars {
+    fmt.Printf("Cache: %s=%s\n", k, v)
+}
+
+// 调试作用域查找
+cache := env.Signed("CACHE", "SESSION")
+debugIter := cache.iter()
+for k, v, ok := debugIter(); ok; k, v, ok = debugIter() {
+    fmt.Printf("Session Cache: %s=%s\n", k, v)
+}
+```

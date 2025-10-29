@@ -1,0 +1,301 @@
+# env - Environment Variable Management Library
+
+> go-slim.dev/env
+
+A thread-safe, high-performance environment variable management library for Go applications.
+
+## Design Philosophy: Initialize Once, Read Many
+
+This package follows a specific usage pattern designed for performance and safety:
+
+1. **INITIALIZATION PHASE**: Load environment variables once during application startup (single-threaded)
+2. **RUNTIME PHASE**: Read environment variables concurrently throughout the application lifecycle (multi-threaded)
+
+## Project Structure
+
+```
+env/
+├── env.go          - Main API, global functions, initialization
+├── environ.go      - Core environment storage implementation
+├── signer.go       - Scoped environment variable access
+├── inner.go        - Type conversion and struct filling
+├── *_test.go       - Comprehensive test suite
+├── go.mod          - Module definition
+└── .github/workflows/ - CI/CD configuration
+```
+
+## Core Architecture
+
+### Thread Safety Model
+
+- **WRITE operations** (Save, Load, Read, Clean): NOT thread-safe, initialization only
+- **READ operations** (Lookup, String, Int, Bool, etc.): Thread-safe after initialization
+
+The design eliminates the need for locks by:
+- Single-threaded initialization (no concurrent writes)
+- Read-only runtime (Go slice reads are safe without locks)
+- Atomic position tracking for iterators
+
+### Key Components
+
+#### Environ Interface
+- `Signer`: Scoped query interface for environment variables
+- `Lookup/Exists`: Basic value retrieval
+- `String/Int/Bool/Duration/List`: Typed value retrieval
+- `Map/Where`: Advanced filtering and aggregation
+- `Fill`: Struct population with environment variables
+- `Lock`: Enforces read-only contract during runtime
+
+#### Environment Storage
+- `environ`: Core implementation with key/value slices
+- `signer`: Hierarchical lookup with prefix/category fallback
+- `inner`: Type conversion utilities
+
+## Usage Patterns
+
+### Correct Usage Pattern
+
+```go
+func main() {
+    // ✓ INITIALIZATION: Call Init() once at startup (single-threaded)
+    if err := env.Init(); err != nil {
+        log.Fatal(err)
+    }
+
+    // ✓ BEST PRACTICE: Lock after initialization to prevent accidental writes
+    env.Lock()
+
+    // ✓ RUNTIME: Read operations are safe for concurrent use
+    go func() {
+        cache := env.Signed("CACHE", "BOOK")
+        driver := cache.String("DRIVER")  // Safe: read-only
+        timeout := cache.Duration("TIMEOUT", 30*time.Second)
+    }()
+
+    go func() {
+        port := env.Int("PORT", 8080)     // Safe: read-only
+        debug := env.Bool("DEBUG", false) // Safe: read-only
+    }()
+}
+```
+
+### Incorrect Usage Pattern
+
+```go
+func main() {
+    // ✗ WRONG: Calling Init() concurrently causes data races
+    go env.Init()  // DON'T DO THIS
+    go env.Init()  // DON'T DO THIS
+
+    // ✗ WRONG: Modifying environment during runtime causes data races
+    go func() {
+        env.Load(".env.runtime")  // DON'T DO THIS during runtime
+    }()
+}
+```
+
+## Key Features
+
+### Hierarchical Environment Variables
+
+The `Signer` interface provides scoped access with fallback behavior:
+
+```go
+// Environment variables:
+//   CACHE_DRIVER=redis
+//   CACHE_DATABASE=1
+//   CACHE_BOOK_DATABASE=10
+//   CACHE_BOOK_SCOPE=app:books:
+
+// Use scoped access
+cache := env.Signed("CACHE", "BOOK")
+driver := cache.String("DRIVER")   // redis (from CACHE_DRIVER, fallback)
+database := cache.Int("DATABASE")   // 10 (from CACHE_BOOK_DATABASE, specific)
+scope := cache.String("SCOPE")      // app:books: (from CACHE_BOOK_SCOPE)
+```
+
+### Lookup Strategy
+
+For prefix="CACHE", category="BOOK", key="DATABASE":
+1. First tries: `CACHE_BOOK_DATABASE`
+2. Falls back to: `CACHE_DATABASE` (if category-specific not found)
+
+This allows common settings at prefix level with category-specific overrides.
+
+### Struct Population
+
+```go
+type Config struct {
+    Port     int           `env:"PORT"`
+    Debug    bool          `env:"DEBUG"`
+    Database DatabaseConfig
+}
+
+type DatabaseConfig struct {
+    Driver string `env:"DB_DRIVER"`
+    Host   string `env:"DB_HOST"`
+    Port   int    `env:"DB_PORT"`
+}
+
+var config Config
+env.Fill(&config)
+```
+
+## Implementation Details
+
+### File Loading Sequence
+
+1. System environment variables (os.Environ())
+2. `.env` and `.env.local` files
+3. `.env.{APP_ENV}` and `.env.{APP_ENV}.local` files
+4. Additional files via `Load()` calls
+
+### Concurrent Iterator Design
+
+```go
+func (e *environ) iter() func() (key string, value string, ok bool) {
+    var pos int32 = -1  // Atomic position counter
+    return func() (key string, value string, ok bool) {
+        index := int(atomic.AddInt32(&pos, 1))
+        if index >= len(e.keys) {
+            return "", "", false
+        }
+        return e.keys[index], e.values[index], true
+    }
+}
+```
+
+- Uses `atomic.AddInt32` for thread-safe position tracking
+- Multiple goroutines can safely use the same iterator
+- No locks needed due to read-only runtime design
+
+### Signer Iterator with Buffering
+
+The `signer.iter()` implements a two-phase approach:
+
+**Phase 1**: Category-specific iteration
+- Returns `PREFIX_CATEGORY_*` variables immediately
+- Buffers `PREFIX_*` variables for fallback
+
+**Phase 2**: Fallback iteration
+- Returns buffered `PREFIX_*` variables
+- Ensures fallback values are available after category-specific ones
+
+## Error Handling
+
+- `ErrLocked`: Returned when attempting to modify locked environment
+- `os.ErrNotExist`: Returned when .env files don't exist (not fatal)
+- Type conversion errors: Returned by `Fill()` method
+- Panic: Occurs when calling Save/Clean after Lock() (programmer error)
+
+## Performance Considerations
+
+1. **Zero-Lock Design**: No runtime locks due to read-only pattern
+2. **Efficient Storage**: Parallel slices for key/value pairs
+3. **Atomic Iteration**: Lock-free concurrent iteration
+4. **Minimal Allocations**: Reuses existing string storage
+
+## Dependencies
+
+- **Runtime**: Standard library only (reflect, strconv, strings, sync/atomic)
+- **Development**: `github.com/stretchr/testify` (tests)
+- **External**: `github.com/joho/godotenv` (.env file parsing)
+
+## Testing
+
+Comprehensive test coverage includes:
+- **Thread safety**: Race condition tests, concurrent access patterns
+- **Boundary cases**: Empty values, missing keys, locked environments
+- **Integration**: File loading, struct population, complex hierarchies
+- **Performance**: Benchmark tests for hot paths
+- **CI/CD**: GitHub Actions with act optimization
+
+## Common Patterns
+
+### Configuration Management
+```go
+// Application configuration
+type Config struct {
+    Environment string `env:"APP_ENV"`
+    Debug       bool   `env:"DEBUG"`
+    Port        int    `env:"PORT"`
+}
+
+// Load configuration
+env.Init()
+env.Lock()
+
+var config Config
+env.Fill(&config)
+```
+
+### Service Configuration
+```go
+// Database configuration
+db := env.Signed("DATABASE", "")
+host := db.String("HOST", "localhost")
+port := db.Int("PORT", 5432)
+sslMode := db.String("SSL_MODE", "disable")
+
+// Cache configuration
+cache := env.Signed("CACHE", "")
+driver := cache.String("DRIVER", "memory")
+ttl := cache.Duration("TTL", 5*time.Minute)
+```
+
+### Environment-Specific Settings
+```go
+// Development vs production
+if env.Is("development", "dev") {
+    log.SetLevel(log.DebugLevel)
+    env.Signed("DEBUG", "").Bool("ENABLED", true)
+}
+
+// Production safety
+if env.Is("production", "prod") {
+    env.Lock() // Prevent runtime modifications
+}
+```
+
+## Version Compatibility
+
+- Go 1.20+ recommended
+- Tested with Go 1.24
+- Backward compatible API design
+- Atomic operations ensure thread safety
+
+## Design Principles
+
+1. **Performance First**: Zero-lock runtime design for maximum throughput
+2. **Safety Enforced**: Lock mechanism prevents accidental writes
+3. **Hierarchy Support**: Prefix/category pattern for complex configurations
+4. **Type Safety**: Full type conversion with fallback values
+5. **Integration Ready**: Works seamlessly with existing Go deployment patterns
+
+## Migration Guide
+
+From os.Getenv():
+
+```go
+// Before
+port := os.Getenv("PORT")
+if port == "" {
+    port = "8080"
+}
+
+// After
+port := env.String("PORT", "8080")
+```
+
+From other environment libraries:
+
+```go
+// Initialize once
+env.Init()
+env.Lock()
+
+// Use typed access instead of string parsing
+port := env.Int("PORT", 8080)
+debug := env.Bool("DEBUG", false)
+timeout := env.Duration("TIMEOUT", 30*time.Second)
+```
