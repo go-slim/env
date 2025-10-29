@@ -191,8 +191,8 @@ func (s *signer) iter() func() (key string, value string, ok bool) {
 					break
 				}
 				// Return category-specific variables immediately
-				if strings.HasPrefix(k, fullPrefix) {
-					return strings.TrimPrefix(k, fullPrefix), v, true
+				if after, ok0 := strings.CutPrefix(k, fullPrefix); ok0 {
+					return after, v, true
 				}
 				// Buffer keys with root prefix for fallback (only when prefix is set)
 				if rootPrefix != "" && strings.HasPrefix(k, rootPrefix) {
