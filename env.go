@@ -357,15 +357,7 @@ func Inject(env Environ, data map[string]string) bool {
 	if env == nil || len(data) == 0 {
 		return false
 	}
-	if s, ok := env.(interface {
-		Updates(data map[string]string) error
-	}); ok {
-		if err := s.Updates(data); err != nil {
-			return false
-		}
-		return true
-	}
-	return false
+	return env.Updates(data) == nil
 }
 
 // Lookup retrieves the value of an environment variable.
