@@ -6,18 +6,18 @@ import (
 	"testing"
 )
 
-// TestLock_PreventsSave tests that Save panics after Lock
-func TestLock_PreventsSave(t *testing.T) {
+// TestLock_PreventsUpdates tests that Updates panics after Lock
+func TestLock_PreventsUpdates(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{"KEY": "value"})
+	e.(*environ).Updates(map[string]string{"KEY": "value"})
 
 	// Lock the environ
 	e.Lock()
 
-	// Attempt to Save should panic
+	// Attempt to Updates should panic
 	defer func() {
 		if r := recover(); r == nil {
-			t.Fatal("Expected Save to panic after Lock, but it didn't")
+			t.Fatal("Expected Updates to panic after Lock, but it didn't")
 		} else {
 			msg := r.(string)
 			if !strings.Contains(msg, "locked") {
@@ -26,7 +26,7 @@ func TestLock_PreventsSave(t *testing.T) {
 		}
 	}()
 
-	e.(*environ).Save(map[string]string{"KEY2": "value2"})
+	e.(*environ).Updates(map[string]string{"KEY2": "value2"})
 }
 
 // TestLock_PreventsLoad tests that Load returns error after Lock
@@ -60,7 +60,7 @@ func TestLock_PreventsRead(t *testing.T) {
 // TestLock_PreventsClean tests that Clean panics after Lock
 func TestLock_PreventsClean(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{"KEY": "value"})
+	e.(*environ).Updates(map[string]string{"KEY": "value"})
 
 	// Lock the environ
 	e.Lock()
@@ -83,7 +83,7 @@ func TestLock_PreventsClean(t *testing.T) {
 // TestLock_AllowsReads tests that read operations still work after Lock
 func TestLock_AllowsReads(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"KEY1": "value1",
 		"KEY2": "value2",
 	})
@@ -120,7 +120,7 @@ func TestLock_AllowsReads(t *testing.T) {
 // TestLock_Idempotent tests that calling Lock multiple times is safe
 func TestLock_Idempotent(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{"KEY": "value"})
+	e.(*environ).Updates(map[string]string{"KEY": "value"})
 
 	// Lock multiple times
 	e.Lock()
@@ -147,7 +147,7 @@ func TestGlobalLock(t *testing.T) {
 
 	// Create new global env for this test
 	env = New().(*environ)
-	env.Save(map[string]string{"TEST_KEY": "test_value"})
+	env.Updates(map[string]string{"TEST_KEY": "test_value"})
 
 	// Lock globally
 	Lock()
@@ -169,7 +169,7 @@ func TestLock_CorrectUsagePattern(t *testing.T) {
 	e := New()
 
 	// Phase 1: Initialization (single-threaded)
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"APP_NAME": "myapp",
 		"PORT":     "8080",
 	})

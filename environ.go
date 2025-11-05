@@ -16,11 +16,11 @@ var ErrLocked = errors.New("env: environ is locked, write operations are not all
 // environ is the internal implementation of the Environ interface.
 //
 // Thread Safety Model:
-//   - WRITE operations (Save, Load, Read, Clean): NOT thread-safe, for initialization only
+//   - WRITE operations (Updates, Load, Read, Clean): NOT thread-safe, for initialization only
 //   - READ operations (lookup, exists, iter): Thread-safe AFTER initialization completes
 //
 // Design Intent:
-//   - Initialize once: Call Save/Load/Read during application startup (single-threaded)
+//   - Initialize once: Call Updates/Load/Read during application startup (single-threaded)
 //   - Read many: All read operations are safe after initialization (multi-threaded, read-only)
 //
 // No locks are needed because:
@@ -40,7 +40,7 @@ type environ struct {
 // New creates a new Environ instance.
 //
 // The returned Environ follows the same thread-safety model as the package:
-// - Write operations (Save, Load): Use during initialization only
+// - Write operations (Updates, Load): Use during initialization only
 // - Read operations (Lookup, String, etc.): Safe for concurrent use after initialization
 func New() Environ {
 	e := &environ{}
@@ -60,7 +60,7 @@ func (e *environ) Read(r io.Reader) error {
 	}
 	data, err := godotenv.Parse(r)
 	if err == nil {
-		e.Save(data)
+		e.Updates(data)
 	}
 	return err
 }
@@ -75,19 +75,19 @@ func (e *environ) Load(filenames ...string) error {
 	}
 	data, err := godotenv.Read(filenames...)
 	if err == nil {
-		e.Save(data)
+		e.Updates(data)
 	}
 	return err
 }
 
-// Save stores data into the cached environment variables.
+// Updates stores data into the cached environment variables.
 //
 // NOT Thread-Safe: This is an initialization function. Do not call during runtime.
 // Must be called in a single-threaded context during application startup.
 // Panics if Lock() has been called.
-func (e *environ) Save(data map[string]string) {
+func (e *environ) Updates(data map[string]string) {
 	if e.locked.Load() {
-		panic("env: cannot call Save() after Lock() - environ is locked for write operations")
+		panic("env: cannot call Updates() after Lock() - environ is locked for write operations")
 	}
 	for key, value := range data {
 		if i := e.index(key); i > -1 {
@@ -180,8 +180,8 @@ func (e *environ) Clean() {
 
 // Lock prevents further write operations on this Environ.
 //
-// After calling Lock(), any attempt to call Save(), Load(), Read(), or Clean()
-// will result in an error (for Load/Read) or panic (for Save/Clean).
+// After calling Lock(), any attempt to call Updates(), Load(), Read(), or Clean()
+// will result in an error (for Load/Read) or panic (for Updates/Clean).
 //
 // This should be called after initialization is complete to enforce the
 // "read-only" contract during the runtime phase.

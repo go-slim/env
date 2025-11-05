@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-func TestEnviron_Save_Lookup_Exists_Map_Where(t *testing.T) {
+func TestEnviron_Updates_Lookup_Exists_Map_Where(t *testing.T) {
 	e := New().(*environ)
-	// Save values, including an empty one
-	e.Save(map[string]string{
+	// Updates values, including an empty one
+	e.Updates(map[string]string{
 		"A":         "1",
 		"B":         "",
 		"GROUP_X":   "x",
@@ -45,7 +45,7 @@ func TestEnviron_Save_Lookup_Exists_Map_Where(t *testing.T) {
 func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 	e := New().(*environ)
 	// Category-level
-	e.Save(map[string]string{
+	e.Updates(map[string]string{
 		"APP_WEB_HOST":    "0.0.0.0",
 		"APP_WEB_DEBUG":   "true",
 		"APP_WEB_TIMEOUT": "150ms",
@@ -53,7 +53,7 @@ func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 		"APP_WEB_TAGS":    "a, b, c",
 	})
 	// Prefix-level fallbacks
-	e.Save(map[string]string{
+	e.Updates(map[string]string{
 		"APP_PORT":    "8080",
 		"APP_TIMEOUT": "200ms",
 		"APP_RATE":    "2.5",
@@ -88,7 +88,7 @@ func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 
 func TestSigner_Fill_Struct(t *testing.T) {
 	e := New().(*environ)
-	e.Save(map[string]string{
+	e.Updates(map[string]string{
 		"APP_WEB_HOST":     "localhost",
 		"APP_PORT":         "9000", // fallback for WEB
 		"APP_WEB_DEBUG":    "false",

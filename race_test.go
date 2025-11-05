@@ -46,7 +46,7 @@ func TestConcurrentReads(t *testing.T) {
 	e := New()
 
 	// ✓ INITIALIZATION (single-threaded)
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"KEY1": "value1",
 		"KEY2": "value2",
 		"KEY3": "value3",
@@ -55,11 +55,11 @@ func TestConcurrentReads(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// ✓ RUNTIME (multi-threaded, read-only)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for range 100 {
 				_, _ = e.Lookup("KEY1")
 				_, _ = e.Lookup("KEY2")
 				_ = e.Exists("KEY3")

@@ -129,8 +129,8 @@ func (i *inner) Map(prefix string) map[string]string {
 		if !ok {
 			return result
 		}
-		if strings.HasPrefix(key, prefix) {
-			name := strings.TrimPrefix(key, prefix)
+		if after, ok0 := strings.CutPrefix(key, prefix); ok0 {
+			name := after
 			result[name] = strings.TrimSpace(value)
 		}
 	}
@@ -155,7 +155,7 @@ func (i *inner) Where(filter func(name, value string) bool) map[string]string {
 func (i *inner) Fill(structure any) error {
 	inputType := reflect.TypeOf(structure)
 
-	if inputType != nil && inputType.Kind() == reflect.Ptr && inputType.Elem().Kind() == reflect.Struct {
+	if inputType != nil && inputType.Kind() == reflect.Pointer && inputType.Elem().Kind() == reflect.Struct {
 		return i.fillStruct(reflect.ValueOf(structure).Elem())
 	}
 
@@ -177,7 +177,7 @@ func (i *inner) fillStruct(s reflect.Value) error {
 			if err := i.fillStruct(s.Field(j)); err != nil {
 				return err
 			}
-		} else if s.Type().Field(j).Type.Kind() == reflect.Ptr {
+		} else if s.Type().Field(j).Type.Kind() == reflect.Pointer {
 			if s.Field(j).IsZero() == false && s.Field(j).Elem().Type().Kind() == reflect.Struct {
 				if err := i.fillStruct(s.Field(j).Elem()); err != nil {
 					return err

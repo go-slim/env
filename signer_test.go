@@ -5,11 +5,11 @@ import "testing"
 func TestSigner_LookupExists_Fallback(t *testing.T) {
 	e := New().(*environ)
 	// Only prefix-level value
-	e.Save(map[string]string{"APP_PORT": "8080"})
+	e.Updates(map[string]string{"APP_PORT": "8080"})
 	// Category-level value
-	e.Save(map[string]string{"APP_WEB_HOST": "0.0.0.0"})
+	e.Updates(map[string]string{"APP_WEB_HOST": "0.0.0.0"})
 	// Another category value
-	e.Save(map[string]string{"APP_DB_HOST": "127.0.0.1"})
+	e.Updates(map[string]string{"APP_DB_HOST": "127.0.0.1"})
 
 	web := e.Signed("APP", "WEB")
 	if v, ok := web.Lookup("HOST"); !ok || v != "0.0.0.0" {
@@ -32,11 +32,11 @@ func TestSigner_LookupExists_Fallback(t *testing.T) {
 
 func TestSigner_Iter_FilterAndBuffering(t *testing.T) {
 	e := New().(*environ)
-	// Control Save order by single-entry saves
-	e.Save(map[string]string{"APP_A_X": "1"})
-	e.Save(map[string]string{"APP_B_Y": "2"})
-	e.Save(map[string]string{"APP_Z": "3"})
-	e.Save(map[string]string{"OTHER": "9"})
+	// Control Updates order by single-entry updates
+	e.Updates(map[string]string{"APP_A_X": "1"})
+	e.Updates(map[string]string{"APP_B_Y": "2"})
+	e.Updates(map[string]string{"APP_Z": "3"})
+	e.Updates(map[string]string{"OTHER": "9"})
 
 	s := e.Signed("APP", "B")
 	next := s.(*signer).iter()

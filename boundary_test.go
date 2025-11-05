@@ -37,7 +37,7 @@ func TestFillWithUnexportedField(t *testing.T) {
 	}
 
 	e := New()
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"PUBLIC":  "public_value",
 		"PRIVATE": "private_value",
 	})
@@ -62,7 +62,7 @@ func TestFillWithCircularReference(t *testing.T) {
 	}
 
 	e := New()
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"VALUE": "test",
 	})
 
@@ -110,7 +110,7 @@ func TestFillWithCircularReference(t *testing.T) {
 // TestLookupEmptyKey tests lookup with empty key
 func TestLookupEmptyKey(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"": "empty_key_value",
 	})
 
@@ -122,18 +122,18 @@ func TestLookupEmptyKey(t *testing.T) {
 	}
 }
 
-// TestSaveNilMap tests Save with nil map
-func TestSaveNilMap(t *testing.T) {
+// TestUpdatesNilMap tests Updates with nil map
+func TestUpdatesNilMap(t *testing.T) {
 	e := New()
 	// This should not panic
-	e.(*environ).Save(nil)
-	t.Log("Save(nil) completed without panic")
+	e.(*environ).Updates(nil)
+	t.Log("Updates(nil) completed without panic")
 }
 
 // TestIteratorAfterClean tests iterator after Clean
 func TestIteratorAfterClean(t *testing.T) {
 	e := New()
-	e.(*environ).Save(map[string]string{
+	e.(*environ).Updates(map[string]string{
 		"KEY": "value",
 	})
 

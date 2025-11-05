@@ -11,7 +11,7 @@ import (
 func prepareTestData(b *testing.B, e Environ, count int) {
 	data := make(map[string]string, count)
 	prefixes := []string{"APP_", "CACHE_", "DB_", "FEATURE_"}
-	for i := 0; i < count; i++ {
+	for i := range count {
 		p := prefixes[i%len(prefixes)]
 		key := p + "KEY_" + strconv.Itoa(i)
 		val := "v" + strconv.Itoa(i)
@@ -36,12 +36,12 @@ func BenchmarkLookup(b *testing.B) {
 	prepareTestData(b, e, 50_000)
 	b.ReportAllocs()
 	b.Run("exists", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = e.Lookup("APP_ENV")
 		}
 	})
 	b.Run("missing", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = e.Lookup("NOT_EXISTS")
 		}
 	})
@@ -52,22 +52,22 @@ func BenchmarkGetters(b *testing.B) {
 	prepareTestData(b, e, 50_000)
 	b.ReportAllocs()
 	b.Run("String", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = e.String("APP_ENV")
 		}
 	})
 	b.Run("Int", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = e.Int("APP_PORT")
 		}
 	})
 	b.Run("Bool", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = e.Bool("APP_DEBUG")
 		}
 	})
 	b.Run("List", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = e.List("APP_LIST")
 		}
 	})
@@ -78,7 +78,7 @@ func BenchmarkSigned(b *testing.B) {
 	prepareTestData(b, e, 100_000)
 	s := e.Signed("APP", "WEB")
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = s.String("HOST")
 	}
 }
@@ -87,7 +87,7 @@ func BenchmarkMapPrefix(b *testing.B) {
 	e := Default()
 	prepareTestData(b, e, 100_000)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		m := e.Map("APP_")
 		if len(m) == 0 {
 			b.Fatalf("unexpected empty map")
@@ -99,7 +99,7 @@ func BenchmarkWhereFilter(b *testing.B) {
 	e := Default()
 	prepareTestData(b, e, 100_000)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		m := e.Where(func(name, value string) bool {
 			return strings.HasPrefix(name, "CACHE_")
 		})
@@ -121,7 +121,7 @@ func BenchmarkFill(b *testing.B) {
 	e := Default()
 	prepareTestData(b, e, 50_000)
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var c cfg
 		if err := e.Fill(&c); err != nil {
 			b.Fatalf("Fill error: %v", err)

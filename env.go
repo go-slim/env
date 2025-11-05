@@ -61,6 +61,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -129,7 +130,7 @@ type Environ interface {
 	Signed(prefix, category string) Signer
 	// Clean clears all cached data.
 	Clean()
-	// Lock prevents further write operations (Save/Load/Read/Clean).
+	// Lock prevents further write operations (Updates/Load/Read/Clean).
 	// After calling Lock, any attempt to modify the environment will result in
 	// a panic or error. This should be called after initialization is complete
 	// to enforce the "read-only" contract during runtime.
@@ -147,7 +148,7 @@ var (
 // Default returns the default Environ instance.
 //
 // Thread Safety: The returned Environ is safe for concurrent READ operations
-// after initialization. Do not call Save/Load methods concurrently.
+// after initialization. Do not call Updates/Load methods concurrently.
 func Default() Environ {
 	return env
 }
@@ -228,7 +229,7 @@ func InitWithDir(dir string) (err error) {
 		val := strings.TrimSpace(parts[1])
 		result[key] = val
 	}
-	env.Save(result)
+	env.Updates(result)
 
 	// Load .env and .env.local files
 	err = loadEnv(dir, "")
@@ -239,7 +240,7 @@ func InitWithDir(dir string) (err error) {
 	// Load environment-specific variables
 	appEnv := String("APP_ENV", "prod")
 	if len(appEnv) > 0 {
-		env.Save(map[string]string{
+		env.Updates(map[string]string{
 			"APP_ENV": appEnv,
 		})
 		// Load .env.{APP_ENV} and .env.{APP_ENV}.local files
@@ -338,10 +339,8 @@ func Is(env ...string) bool {
 		return false
 	}
 	if val, exists := Lookup("APP_ENV"); exists {
-		for _, s := range env {
-			if val == s {
-				return true
-			}
+		if slices.Contains(env, val) {
+			return true
 		}
 	}
 	return false
@@ -352,8 +351,8 @@ func Inject(env Environ, data map[string]string) bool {
 	if env == nil || len(data) == 0 {
 		return false
 	}
-	if s, ok := env.(interface{ Save(data map[string]string) }); ok {
-		s.Save(data)
+	if s, ok := env.(interface{ Updates(data map[string]string) }); ok {
+		s.Updates(data)
 		return true
 	}
 	return false
