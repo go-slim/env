@@ -60,7 +60,7 @@ func (e *environ) Read(r io.Reader) error {
 	}
 	data, err := godotenv.Parse(r)
 	if err == nil {
-		e.Updates(data)
+		err = e.Updates(data)
 	}
 	return err
 }
@@ -75,7 +75,7 @@ func (e *environ) Load(filenames ...string) error {
 	}
 	data, err := godotenv.Read(filenames...)
 	if err == nil {
-		e.Updates(data)
+		err = e.Updates(data)
 	}
 	return err
 }
@@ -83,11 +83,10 @@ func (e *environ) Load(filenames ...string) error {
 // Updates stores data into the cached environment variables.
 //
 // NOT Thread-Safe: This is an initialization function. Do not call during runtime.
-// Must be called in a single-threaded context during application startup.
-// Panics if Lock() has been called.
-func (e *environ) Updates(data map[string]string) {
+// Returns ErrLocked if Lock() has been called.
+func (e *environ) Updates(data map[string]string) error {
 	if e.locked.Load() {
-		panic("env: cannot call Updates() after Lock() - environ is locked for write operations")
+		return ErrLocked
 	}
 	for key, value := range data {
 		if i := e.index(key); i > -1 {
@@ -97,6 +96,7 @@ func (e *environ) Updates(data map[string]string) {
 			e.values = append(e.values, value)
 		}
 	}
+	return nil
 }
 
 func (e *environ) Signed(prefix, category string) Signer {

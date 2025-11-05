@@ -37,10 +37,12 @@ func TestFillWithUnexportedField(t *testing.T) {
 	}
 
 	e := New()
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"PUBLIC":  "public_value",
 		"PRIVATE": "private_value",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	cfg := &Config{}
 	err := e.Fill(cfg)
@@ -62,9 +64,11 @@ func TestFillWithCircularReference(t *testing.T) {
 	}
 
 	e := New()
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"VALUE": "test",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Create a circular reference
 	node := &Node{}
@@ -110,9 +114,11 @@ func TestFillWithCircularReference(t *testing.T) {
 // TestLookupEmptyKey tests lookup with empty key
 func TestLookupEmptyKey(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"": "empty_key_value",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	val, ok := e.Lookup("")
 	if ok {
@@ -125,17 +131,21 @@ func TestLookupEmptyKey(t *testing.T) {
 // TestUpdatesNilMap tests Updates with nil map
 func TestUpdatesNilMap(t *testing.T) {
 	e := New()
-	// This should not panic
-	e.(*environ).Updates(nil)
-	t.Log("Updates(nil) completed without panic")
+	// This should not return error
+	if err := e.(*environ).Updates(nil); err != nil {
+		t.Fatalf("Updates(nil) returned error: %v", err)
+	}
+	t.Log("Updates(nil) completed without error")
 }
 
 // TestIteratorAfterClean tests iterator after Clean
 func TestIteratorAfterClean(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"KEY": "value",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	iter := e.(*environ).iter()
 

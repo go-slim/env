@@ -9,13 +9,15 @@ import (
 func TestEnviron_Updates_Lookup_Exists_Map_Where(t *testing.T) {
 	e := New().(*environ)
 	// Updates values, including an empty one
-	e.Updates(map[string]string{
+	if err := e.Updates(map[string]string{
 		"A":         "1",
 		"B":         "",
 		"GROUP_X":   "x",
 		"GROUP_Y":   "y",
 		"IGNORED_Z": "z",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Lookup returns ok=false for empty value, Exists still true
 	if v, ok := e.Lookup("A"); !ok || v != "1" {
@@ -45,20 +47,24 @@ func TestEnviron_Updates_Lookup_Exists_Map_Where(t *testing.T) {
 func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 	e := New().(*environ)
 	// Category-level
-	e.Updates(map[string]string{
+	if err := e.Updates(map[string]string{
 		"APP_WEB_HOST":    "0.0.0.0",
 		"APP_WEB_DEBUG":   "true",
 		"APP_WEB_TIMEOUT": "150ms",
 		"APP_WEB_RATE":    "3.14",
 		"APP_WEB_TAGS":    "a, b, c",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 	// Prefix-level fallbacks
-	e.Updates(map[string]string{
+	if err := e.Updates(map[string]string{
 		"APP_PORT":    "8080",
 		"APP_TIMEOUT": "200ms",
 		"APP_RATE":    "2.5",
 		"APP_ENABLED": "1",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	s := e.Signed("APP", "WEB")
 
@@ -88,14 +94,16 @@ func TestSigner_TypedGetters_WithFallbacks(t *testing.T) {
 
 func TestSigner_Fill_Struct(t *testing.T) {
 	e := New().(*environ)
-	e.Updates(map[string]string{
+	if err := e.Updates(map[string]string{
 		"APP_WEB_HOST":     "localhost",
 		"APP_PORT":         "9000", // fallback for WEB
 		"APP_WEB_DEBUG":    "false",
 		"APP_TIMEOUT":      "1s", // fallback
 		"APP_WEB_RATE":     "1.5",
 		"APP_FEATURE_FLAG": "true", // nested
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 	type Feature struct {
 		Flag bool `env:"FEATURE_FLAG"`
 	}

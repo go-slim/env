@@ -5,11 +5,17 @@ import "testing"
 func TestSigner_LookupExists_Fallback(t *testing.T) {
 	e := New().(*environ)
 	// Only prefix-level value
-	e.Updates(map[string]string{"APP_PORT": "8080"})
+	if err := e.Updates(map[string]string{"APP_PORT": "8080"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 	// Category-level value
-	e.Updates(map[string]string{"APP_WEB_HOST": "0.0.0.0"})
+	if err := e.Updates(map[string]string{"APP_WEB_HOST": "0.0.0.0"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 	// Another category value
-	e.Updates(map[string]string{"APP_DB_HOST": "127.0.0.1"})
+	if err := e.Updates(map[string]string{"APP_DB_HOST": "127.0.0.1"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	web := e.Signed("APP", "WEB")
 	if v, ok := web.Lookup("HOST"); !ok || v != "0.0.0.0" {
@@ -33,10 +39,18 @@ func TestSigner_LookupExists_Fallback(t *testing.T) {
 func TestSigner_Iter_FilterAndBuffering(t *testing.T) {
 	e := New().(*environ)
 	// Control Updates order by single-entry updates
-	e.Updates(map[string]string{"APP_A_X": "1"})
-	e.Updates(map[string]string{"APP_B_Y": "2"})
-	e.Updates(map[string]string{"APP_Z": "3"})
-	e.Updates(map[string]string{"OTHER": "9"})
+	if err := e.Updates(map[string]string{"APP_A_X": "1"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
+	if err := e.Updates(map[string]string{"APP_B_Y": "2"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
+	if err := e.Updates(map[string]string{"APP_Z": "3"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
+	if err := e.Updates(map[string]string{"OTHER": "9"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	s := e.Signed("APP", "B")
 	next := s.(*signer).iter()

@@ -126,6 +126,8 @@ type Environ interface {
 	Read(r io.Reader) error
 	// Load loads environment variable files.
 	Load(filenames ...string) error
+	// Updates stores data into the cached environment variables.
+	Updates(data map[string]string) error
 	// Signed returns a Signer that follows a specific prefix and category rule.
 	Signed(prefix, category string) Signer
 	// Clean clears all cached data.
@@ -229,7 +231,9 @@ func InitWithDir(dir string) (err error) {
 		val := strings.TrimSpace(parts[1])
 		result[key] = val
 	}
-	env.Updates(result)
+	if err := env.Updates(result); err != nil {
+		return err
+	}
 
 	// Load .env and .env.local files
 	err = loadEnv(dir, "")
@@ -240,9 +244,11 @@ func InitWithDir(dir string) (err error) {
 	// Load environment-specific variables
 	appEnv := String("APP_ENV", "prod")
 	if len(appEnv) > 0 {
-		env.Updates(map[string]string{
+		if err := env.Updates(map[string]string{
 			"APP_ENV": appEnv,
-		})
+		}); err != nil {
+			return err
+		}
 		// Load .env.{APP_ENV} and .env.{APP_ENV}.local files
 		err = loadEnv(dir, "."+strings.ToLower(appEnv))
 		if err != nil {
@@ -351,8 +357,12 @@ func Inject(env Environ, data map[string]string) bool {
 	if env == nil || len(data) == 0 {
 		return false
 	}
-	if s, ok := env.(interface{ Updates(data map[string]string) }); ok {
-		s.Updates(data)
+	if s, ok := env.(interface {
+		Updates(data map[string]string) error
+	}); ok {
+		if err := s.Updates(data); err != nil {
+			return false
+		}
 		return true
 	}
 	return false

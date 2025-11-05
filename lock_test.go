@@ -6,27 +6,21 @@ import (
 	"testing"
 )
 
-// TestLock_PreventsUpdates tests that Updates panics after Lock
+// TestLock_PreventsUpdates tests that Updates returns error after Lock
 func TestLock_PreventsUpdates(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{"KEY": "value"})
+	if err := e.(*environ).Updates(map[string]string{"KEY": "value"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Lock the environ
 	e.Lock()
 
-	// Attempt to Updates should panic
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Expected Updates to panic after Lock, but it didn't")
-		} else {
-			msg := r.(string)
-			if !strings.Contains(msg, "locked") {
-				t.Fatalf("Expected panic message to mention 'locked', got: %v", r)
-			}
-		}
-	}()
-
-	e.(*environ).Updates(map[string]string{"KEY2": "value2"})
+	// Attempt to Updates should return ErrLocked
+	err := e.(*environ).Updates(map[string]string{"KEY2": "value2"})
+	if !errors.Is(err, ErrLocked) {
+		t.Fatalf("Expected ErrLocked, got: %v", err)
+	}
 }
 
 // TestLock_PreventsLoad tests that Load returns error after Lock
@@ -60,7 +54,9 @@ func TestLock_PreventsRead(t *testing.T) {
 // TestLock_PreventsClean tests that Clean panics after Lock
 func TestLock_PreventsClean(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{"KEY": "value"})
+	if err := e.(*environ).Updates(map[string]string{"KEY": "value"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Lock the environ
 	e.Lock()
@@ -83,10 +79,12 @@ func TestLock_PreventsClean(t *testing.T) {
 // TestLock_AllowsReads tests that read operations still work after Lock
 func TestLock_AllowsReads(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"KEY1": "value1",
 		"KEY2": "value2",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Lock the environ
 	e.Lock()
@@ -120,7 +118,9 @@ func TestLock_AllowsReads(t *testing.T) {
 // TestLock_Idempotent tests that calling Lock multiple times is safe
 func TestLock_Idempotent(t *testing.T) {
 	e := New()
-	e.(*environ).Updates(map[string]string{"KEY": "value"})
+	if err := e.(*environ).Updates(map[string]string{"KEY": "value"}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Lock multiple times
 	e.Lock()
@@ -169,10 +169,12 @@ func TestLock_CorrectUsagePattern(t *testing.T) {
 	e := New()
 
 	// Phase 1: Initialization (single-threaded)
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"APP_NAME": "myapp",
 		"PORT":     "8080",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	// Additional loads during init
 	_ = e.Read(strings.NewReader("DEBUG=true"))

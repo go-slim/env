@@ -46,11 +46,13 @@ func TestConcurrentReads(t *testing.T) {
 	e := New()
 
 	// ✓ INITIALIZATION (single-threaded)
-	e.(*environ).Updates(map[string]string{
+	if err := e.(*environ).Updates(map[string]string{
 		"KEY1": "value1",
 		"KEY2": "value2",
 		"KEY3": "value3",
-	})
+	}); err != nil {
+		t.Fatalf("Updates failed: %v", err)
+	}
 
 	var wg sync.WaitGroup
 
