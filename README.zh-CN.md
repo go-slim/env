@@ -22,11 +22,11 @@
 
 ### 线程安全模型
 
-| 操作 | 线程安全性 | 使用时机 |
-|-----------|--------------|-------------|
-| `Init()`, `InitWithDir()`, `Load()` | ❌ 非线程安全 | 启动时调用一次 |
-| `Lookup()`, `String()`, `Int()` 等 | ✅ 线程安全 | 可并发使用 |
-| `Signed()`, `Fill()`, `Map()`, `Where()` | ✅ 线程安全 | 可并发使用 |
+| 操作                                     | 线程安全性    | 使用时机       |
+| ---------------------------------------- | ------------- | -------------- |
+| `Init()`, `InitWithDir()`, `Load()`      | ❌ 非线程安全 | 启动时调用一次 |
+| `Lookup()`, `String()`, `Int()` 等       | ✅ 线程安全   | 可并发使用     |
+| `Signed()`, `Fill()`, `Map()`, `Where()` | ✅ 线程安全   | 可并发使用     |
 
 **关键点**：初始化函数会修改全局状态，必须在启动 goroutine 之前调用。
 
@@ -131,7 +131,8 @@ _ = cache.String("SCOPE")     // "app:books:"（来自 CACHE_BOOK_SCOPE）
 - `env.All()` 返回所有已加载的键值对。
 - `env.Load(files...)` 读取额外的 `.env` 文件并合并值。
 - `env.Read(r io.Reader)` 从 `io.Reader` 读取并解析环境变量（实例级别方法）。
-- `env.Inject(env.Environ, map[string]string)` 将内存中的值注入到 `Environ` 中。
+- `env.Updates(map[string]string)` 将内存中的值更新到全局环境中。
+- `env.Read(r io.Reader)` 从 `io.Reader` 读取并解析环境变量（实例级别方法）。
 
 以上所有函数在 `env.Environ` 上都有对应的实例级别方法。
 
@@ -201,6 +202,7 @@ func load() (*Config, error) {
 ```
 
 注意事项：
+
 - 填充器利用 `reflect` 和轻量级类型转换辅助函数。
 - 如果需要 `time.Duration`，在结构体中保持为 `string` 类型，并通过 `time.ParseDuration` 解析。
 
@@ -227,11 +229,12 @@ go test -v ./env
 ```
 
 测试套件涵盖：
+
 - Signed 查找和回退语义
 - 迭代、缓冲和修剪
 - 类型获取器和列表解析
 - 结构体 `Fill()`，包括嵌套/指针结构体
-- 全局辅助函数：`Init`、`Path`、`Is`、`All`、`Load`、`Inject`
+- 全局辅助函数：`Init`、`Path`、`Is`、`All`、`Load`、`Updates`
 
 ## 许可证
 

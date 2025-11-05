@@ -22,11 +22,11 @@ This library follows an **"Initialize Once, Read Many"** pattern:
 
 ### Thread Safety Model
 
-| Operation | Thread Safety | When to Use |
-|-----------|--------------|-------------|
-| `Init()`, `InitWithDir()`, `Load()` | ❌ NOT thread-safe | Call once at startup |
-| `Lookup()`, `String()`, `Int()`, etc. | ✅ Thread-safe | Safe for concurrent use |
-| `Signed()`, `Fill()`, `Map()`, `Where()` | ✅ Thread-safe | Safe for concurrent use |
+| Operation                                | Thread Safety      | When to Use             |
+| ---------------------------------------- | ------------------ | ----------------------- |
+| `Init()`, `InitWithDir()`, `Load()`      | ❌ NOT thread-safe | Call once at startup    |
+| `Lookup()`, `String()`, `Int()`, etc.    | ✅ Thread-safe     | Safe for concurrent use |
+| `Signed()`, `Fill()`, `Map()`, `Where()` | ✅ Thread-safe     | Safe for concurrent use |
 
 **Key Point**: Initialization functions modify global state and must be called before starting goroutines.
 
@@ -130,9 +130,35 @@ Internally, the resolver tries `PREFIX_CATEGORY_KEY` first; if missing or empty,
 - `env.Is("dev", "prod", ...)` checks if `APP_ENV` matches any provided value.
 - `env.All()` returns all loaded key-value pairs.
 - `env.Load(files...)` reads extra `.env` files and merges values.
-- `env.Inject(env.Environ, map[string]string)` injects in-memory values into an `Environ`.
+- `env.Updates(map[string]string)` updates in-memory values into the global environment.
+- `env.Read(r io.Reader)` reads and parses environment variables from an io.Reader source (instance-level method).
 
 All the above have instance-level equivalents on `env.Environ`.
+
+### Read Method
+
+The `Read` method allows reading environment variables from any `io.Reader` source (such as strings, files, network streams, etc.):
+
+```go
+import (
+    "strings"
+    env "go-slim.dev/env"
+)
+
+// Read from string
+envData := `
+APP_NAME=MyApp
+APP_PORT=8080
+DEBUG=true
+`
+e := env.New()
+_ = e.Read(strings.NewReader(envData))
+
+// Use read environment variables
+fmt.Println(e.String("APP_NAME")) // "MyApp"
+fmt.Println(e.Int("APP_PORT"))     // 8080
+fmt.Println(e.Bool("DEBUG"))       // true
+```
 
 ## Typed getters
 
@@ -175,6 +201,7 @@ func load() (*Config, error) {
 ```
 
 Notes:
+
 - The filler leverages `reflect` and a light casting helper.
 - If you need `time.Duration`, keep it as `string` in the struct and parse via `time.ParseDuration`.
 
@@ -201,11 +228,12 @@ go test -v ./env
 ```
 
 The test suite covers:
+
 - Signed lookup and fallback semantics
 - Iteration, buffering, and trimming
 - Typed getters and list parsing
 - Struct `Fill()` including nested/ptr structs
-- Global helpers: `Init`, `Path`, `Is`, `All`, `Load`, `Inject`
+- Global helpers: `Init`, `Path`, `Is`, `All`, `Load`, `Updates`
 
 ## License
 

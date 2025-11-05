@@ -352,11 +352,8 @@ func Is(env ...string) bool {
 	return false
 }
 
-// Inject attempts to inject data into the Environ instance.
-func Inject(env Environ, data map[string]string) bool {
-	if env == nil || len(data) == 0 {
-		return false
-	}
+// Updates attempts to update data into the Environ instance.
+func Updates(data map[string]string) bool {
 	return env.Updates(data) == nil
 }
 

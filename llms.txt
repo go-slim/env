@@ -28,7 +28,7 @@ env/
 
 ### Thread Safety Model
 
-- **WRITE operations** (Save, Load, Read, Clean): NOT thread-safe, initialization only
+- **WRITE operations** (Updates, Load, Read, Clean): NOT thread-safe, initialization only
 - **READ operations** (Lookup, String, Int, Bool, etc.): Thread-safe after initialization
 
 The design eliminates the need for locks by:
@@ -186,7 +186,7 @@ The `signer.iter()` implements a two-phase approach:
 - `ErrLocked`: Returned when attempting to modify locked environment
 - `os.ErrNotExist`: Returned when .env files don't exist (not fatal)
 - Type conversion errors: Returned by `Fill()` method
-- Panic: Occurs when calling Save/Clean after Lock() (programmer error)
+- Panic: Occurs when calling Updates/Clean after Lock() (programmer error)
 
 ## Performance Considerations
 
@@ -264,6 +264,89 @@ if env.Is("production", "prod") {
 - Backward compatible API design
 - Atomic operations ensure thread safety
 
+## Advanced Features
+
+### Hierarchical Configuration System
+
+The prefix/category system supports complex application configurations:
+
+```
+# Base configuration
+APP_ENV=production
+DEBUG=false
+PORT=8080
+
+# Database configuration
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_DRIVER=postgres
+
+# Cache configuration
+CACHE_DRIVER=redis
+CACHE_HOST=localhost
+CACHE_PORT=6379
+CACHE_TTL=300
+
+# Service-specific configuration
+CACHE_SESSION_HOST=localhost
+CACHE_SESSION_PORT=6380
+CACHE_SESSION_TTL=3600
+```
+
+Access patterns:
+```go
+// Get database configuration
+db := env.Signed("DATABASE", "")
+host := db.String("HOST", "localhost")
+port := db.Int("PORT", 5432)
+
+// Get cache configuration
+cache := env.Signed("CACHE", "")
+driver := cache.String("DRIVER", "memory")
+ttl := cache.Duration("TTL", 5*time.Minute)
+
+// Get session-specific cache configuration
+sessionCache := env.Signed("CACHE", "SESSION")
+sessionHost := sessionCache.String("HOST", "localhost")
+sessionTTL := sessionCache.Duration("TTL", 1*time.Hour)
+```
+
+### File Loading Hierarchy
+
+1. **System environment variables** (highest priority)
+2. **.env.local** (overrides .env)
+3. **.env** (base configuration)
+4. **.env.{APP_ENV}.local** (environment-specific overrides)
+5. **.env.{APP_ENV}** (environment-specific configuration)
+
+### Iterator Buffering Mechanism
+
+The Signer's iterator implements intelligent buffering:
+
+```go
+// Environment variables:
+// CACHE_DRIVER=redis
+// CACHE_TTL=300
+// CACHE_SESSION_TTL=3600
+// CACHE_SESSION_PREFIX=session:
+
+cache := env.Signed("CACHE", "SESSION")
+iter := cache.iter()
+
+// Iteration order:
+// 1. TTL=3600 (from CACHE_SESSION_TTL, category-specific)
+// 2. PREFIX=session: (from CACHE_SESSION_PREFIX, category-specific)
+// 3. DRIVER=redis (from CACHE_DRIVER, fallback)
+// 4. TTL=300 (from CACHE_TTL, fallback, but skipped since already exists)
+```
+
+### Concurrency Safety Guarantees
+
+1. **Atomic operations**: Uses `sync/atomic` for position tracking
+2. **Read-only slices**: Key/value slices never modified after initialization
+3. **Memory barriers**: Atomic operations provide necessary memory barriers
+4. **Lock-free design**: Avoids runtime lock contention
+
 ## Design Principles
 
 1. **Performance First**: Zero-lock runtime design for maximum throughput
@@ -298,4 +381,56 @@ env.Lock()
 port := env.Int("PORT", 8080)
 debug := env.Bool("DEBUG", false)
 timeout := env.Duration("TIMEOUT", 30*time.Second)
+```
+
+## Important Notes
+
+1. **Initialization Constraints**: `Init()` must be called in single-threaded context
+2. **Lock Mechanism**: `Lock()` is idempotent, multiple calls are safe
+3. **Memory Usage**: Key/value pairs stored in memory, suitable for medium-sized configurations
+4. **Type Conversion**: `Fill()` uses reflection and may have performance overhead
+5. **Concurrency Safety**: Violating initialization patterns causes data races
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Race Condition Detection**:
+   ```bash
+   go test -race ./...
+   ```
+
+2. **Configuration Not Loading**:
+   - Check if `Init()` is called at the beginning of `main()`
+   - Verify `.env` file paths and permissions
+
+3. **Lock Errors**:
+   - Ensure all `Load()` calls are completed before `Lock()`
+   - Use `Updates()` for test environment injection
+
+4. **Type Conversion Errors**:
+   - Check struct field tags
+   - Verify environment variable value formats
+
+### Debugging Tips
+
+```go
+// Display all environment variables
+all := env.All()
+for k, v := range all {
+    fmt.Printf("%s=%s\n", k, v)
+}
+
+// Check specific prefixes
+cacheVars := env.Map("CACHE_")
+for k, v := range cacheVars {
+    fmt.Printf("Cache: %s=%s\n", k, v)
+}
+
+// Debug scoped lookups
+cache := env.Signed("CACHE", "SESSION")
+debugIter := cache.iter()
+for k, v, ok := debugIter(); ok; k, v, ok = debugIter() {
+    fmt.Printf("Session Cache: %s=%s\n", k, v)
+}
 ```

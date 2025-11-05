@@ -28,7 +28,7 @@ env/
 
 ### 线程安全模型
 
-- **写操作**（Save、Load、Read、Clean）：非线程安全，仅用于初始化
+- **写操作**（Updates、Load、Read、Clean）：非线程安全，仅用于初始化
 - **读操作**（Lookup、String、Int、Bool 等）：初始化后线程安全
 
 设计通过以下方式消除锁的需求：
@@ -186,7 +186,7 @@ func (e *environ) iter() func() (key string, value string, ok bool) {
 - `ErrLocked`：尝试修改已锁定环境时返回
 - `os.ErrNotExist`：.env 文件不存在时返回（非致命）
 - 类型转换错误：由 `Fill()` 方法返回
-- Panic：Lock() 后调用 Save/Clean 时发生（编程错误）
+- Panic：Lock() 后调用 Updates/Clean 时发生（编程错误）
 
 ## 性能考虑
 
@@ -406,7 +406,7 @@ timeout := env.Duration("TIMEOUT", 30*time.Second)
 
 3. **锁定错误**：
    - 确保在 Lock() 之前完成所有 Load() 调用
-   - 使用 Inject() 进行测试环境注入
+   - 使用 Updates() 进行测试环境注入
 
 4. **类型转换错误**：
    - 检查 struct 字段标签
